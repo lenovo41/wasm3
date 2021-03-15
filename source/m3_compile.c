@@ -16,7 +16,7 @@
 
 #define d_indent "     | %s"
 
-// just want less letter and numbers to stare at down the way in the compiler table
+// just want less letters and numbers to stare at down the way in the compiler table
 #define i_32    c_m3Type_i32
 #define i_64    c_m3Type_i64
 #define f_32    c_m3Type_f32
@@ -382,7 +382,7 @@ _       (EmitOp (o, c_setSetOps [type]));
 }
 
 
-// all values must be in slots befor entering loop, if, and else blocks
+// all values must be in slots before entering loop, if, and else blocks
 // otherwise they'd end up preserve-copied in the block to probably different locations (if/else)
 M3Result  PreserveRegisters  (IM3Compilation o)
 {
@@ -1394,7 +1394,7 @@ _   (ReadLEB_u32 (& functionIndex, & o->wasm, o->wasmEnd));
 
     if (function)
     {                                                                   m3log (compile, d_indent " (func= '%s'; args= %d)",
-                                                                                get_indention_string (o), GetFunctionName (function), function->funcType->numArgs);
+                                                                                get_indention_string (o), m3_GetFunctionName (function), function->funcType->numArgs);
         if (function->module)
         {
             // OPTZ: could avoid arg copy when args are already sequential and at top
@@ -1422,7 +1422,7 @@ _           (EmitOp     (o, op));
         }
         else
         {
-            result = ErrorCompile (m3Err_functionImportMissing, o, "'%s.%s'", GetFunctionImportModuleName (function), GetFunctionName (function));
+            result = ErrorCompile (m3Err_functionImportMissing, o, "'%s.%s'", GetFunctionImportModuleName (function), m3_GetFunctionName (function));
         }
     }
     else result = m3Err_functionLookupFailed;
@@ -1743,7 +1743,7 @@ _   (EmitOp (o, op_Unreachable));
 }
 
 
-// TODO OPTZ: currently all stack slot indicies take up a full word, but
+// TODO OPTZ: currently all stack slot indices take up a full word, but
 // dual stack source operands could be packed together
 M3Result  Compile_Operator  (IM3Compilation o, m3opcode_t i_opcode)
 {
@@ -2168,6 +2168,7 @@ M3Result  Compile_BlockStatements  (IM3Compilation o)
 
     while (o->wasm < o->wasmEnd)
     {                                                                   emit_stack_dump (o);
+        o->lastOpcodeStart = o->wasm;
         m3opcode_t opcode = * (o->wasm++);                              log_opcode (o, opcode);
 
 #ifndef d_m3CompileExtendedOpcode
@@ -2315,7 +2316,7 @@ M3Result  Compile_ReserveConstants  (IM3Compilation o)
 
     // if constants overflow their reserved stack space, the compiler simply emits op_Const
     // operations as needed. Compiled expressions (global inits) don't pass through this
-    // ReserveConstants function and thus always produce inline contants.
+    // ReserveConstants function and thus always produce inline constants.
     numConstantSlots = M3_MIN (numConstantSlots, d_m3MaxConstantTableSize);
 
     o->firstDynamicSlotIndex = o->firstConstSlotIndex + numConstantSlots;
@@ -2340,7 +2341,7 @@ M3Result  Compile_Function  (IM3Function io_function)
     IM3FuncType ft = io_function->funcType;
 
     M3Result result = m3Err_none;                                     m3log (compile, "compiling: '%s'; wasm-size: %d; numArgs: %d; return: %s",
-                                                                           GetFunctionName(io_function), (u32) (io_function->wasmEnd - io_function->wasm), GetFunctionNumArgs (io_function), c_waTypes [GetSingleRetType(ft)]);
+                                                                           m3_GetFunctionName(io_function), (u32) (io_function->wasmEnd - io_function->wasm), GetFunctionNumArgs (io_function), c_waTypes [GetSingleRetType(ft)]);
     IM3Runtime runtime = io_function->module->runtime;
 
     IM3Compilation o = & runtime->compilation;

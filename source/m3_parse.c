@@ -233,7 +233,7 @@ _       (ReadLEB_u32 (& index, & i_bytes, i_end));                              
             {
                 io_module->functions [index].numNames++;
                 io_module->functions [index].names[numNames] = utf8;
-                utf8 = NULL; // ownership transfered to M3Function
+                utf8 = NULL; // ownership transferred to M3Function
             }
         }
 
@@ -557,6 +557,9 @@ _   (m3Alloc (& module, M3Module, 1));
 
     const u8 * pos = i_bytes;
     const u8 * end = pos + i_numBytes;
+
+    module->wasmStart = pos;
+    module->wasmEnd = end;
 
     u32 magic, version;
 _   (Read_u32 (& magic, & pos, end));

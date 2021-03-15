@@ -8,7 +8,7 @@
 #   ./run-spec-test.py ./proposals/tail-call/*.json
 #   ./run-spec-test.py --exec "../build-custom/wasm3 --repl"
 #
-# Running WASI verison with different engines:
+# Running WASI version with different engines:
 #   cp ../build-wasi/wasm3.wasm ./
 #   ./run-spec-test.py --exec "../build/wasm3 wasm3.wasm --repl"
 #   ./run-spec-test.py --exec "wasmtime --dir=. wasm3.wasm -- --repl"
@@ -81,6 +81,10 @@ def fatal(msg):
     log.flush()
     print(f"{ansi.FAIL}Fatal:{ansi.ENDC} {msg}")
     sys.exit(1)
+    
+def safe_fn(fn):
+    keepcharacters = (' ','.','_','-')
+    return "".join(c for c in fn if c.isalnum() or c in keepcharacters).strip()
 
 def binaryToFloat(num, t):
     if t == "f32":
@@ -94,7 +98,7 @@ def escape_str(s):
     if s == "":
         return r'\x00'
 
-    if all((ord(c) < 128 and c.isprintable() and not c in " \n\r\t\\") for c in s):
+    if all((ord(c) < 128 and c.isprintable() and c not in " \n\r\t\\") for c in s):
         return s
 
     return '\\x' + '\\x'.join('{0:02x}'.format(x) for x in s.encode('utf-8'))
@@ -123,7 +127,8 @@ def formatValueFloat(num, t):
         return str(num)
 
     result = "{0:.{1}f}".format(binaryToFloat(num, t), s).rstrip('0')
-    if result.endswith('.'): result = result + '0'
+    if result.endswith('.'):
+        result = result + '0'
     if len(result) > s*2:
         result = "{0:.{1}e}".format(binaryToFloat(num, t), s)
     return result
@@ -142,7 +147,9 @@ if args.format == "fp":
 # Spec tests preparation
 #
 
-if not (os.path.isdir("./core") and os.path.isdir("./proposals")):
+spec_dir = os.path.join(".", ".spec-" + safe_fn(args.spec))
+
+if not (os.path.isdir(spec_dir)):
     from io import BytesIO
     from zipfile import ZipFile
     from urllib.request import urlopen
@@ -157,8 +164,8 @@ if not (os.path.isdir("./core") and os.path.isdir("./proposals")):
                 parts = pathlib.Path(zipInfo.filename).parts
                 newpath = str(pathlib.Path(*parts[1:-1]))
                 newfn   = str(pathlib.Path(*parts[-1:]))
-                ensure_path(newpath)
-                newpath = newpath + "/" + newfn
+                ensure_path(os.path.join(spec_dir, newpath))
+                newpath = os.path.join(spec_dir, newpath, newfn)
                 zipInfo.filename = newpath
                 zipFile.extract(zipInfo)
 
@@ -256,7 +263,7 @@ class Wasm3():
         while time.time() < tout:
             try:
                 data = self.q.get(timeout=0.1)
-                if data == None:
+                if data is None:
                     error = "Crashed"
                     break
                 buff = buff + data.decode("utf-8")
@@ -276,7 +283,7 @@ class Wasm3():
         self.p.stdin.flush()
 
     def _is_running(self):
-        return self.p and (self.p.poll() == None)
+        return self.p and (self.p.poll() is None)
 
     def _flush_input(self):
         while not self.q.empty():
@@ -399,7 +406,7 @@ def runInvoke(test):
             value = str(test.expected[0]['value'])
             expect = "result " + value
 
-            if actual_val != None:
+            if actual_val is not None:
                 if (t == "f32" or t == "f64") and (value == "nan:canonical" or value == "nan:arithmetic"):
                     val = binaryToFloat(actual_val, t)
                     #warning(f"{actual_val} => {val}")
@@ -442,7 +449,8 @@ def runInvoke(test):
     else:
         stats.failed += 1
         log.write(f"FAIL: {actual}, should be: {expect}\n")
-        if args.silent: return
+        if args.silent:
+            return
 
         showTestResult()
         #sys.exit(1)
@@ -450,9 +458,9 @@ def runInvoke(test):
 if args.file:
     jsonFiles = args.file
 else:
-    jsonFiles  = glob.glob(os.path.join(".", "core", "*.json"))
-    jsonFiles += glob.glob(os.path.join(".", "proposals", "sign-extension-ops", "*.json"))
-    jsonFiles += glob.glob(os.path.join(".", "proposals", "nontrapping-float-to-int-conversions", "*.json"))
+    jsonFiles  = glob.glob(os.path.join(spec_dir, "core", "*.json"))
+    jsonFiles += glob.glob(os.path.join(spec_dir, "proposals", "sign-extension-ops", "*.json"))
+    jsonFiles += glob.glob(os.path.join(spec_dir, "proposals", "nontrapping-float-to-int-conversions", "*.json"))
 
 jsonFiles = list(map(lambda x: os.path.relpath(x, scriptDir), jsonFiles))
 jsonFiles.sort()
@@ -566,3 +574,8 @@ elif stats.success > 0:
     if stats.skipped > 0:
         print(f"{ansi.WARNING} ({stats.skipped} tests skipped){ansi.OKGREEN}")
     print(f"======================={ansi.ENDC}")
+    
+elif stats.total_run == 0:
+    print("Error: No tests run")
+    sys.exit(1)
+

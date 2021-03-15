@@ -35,15 +35,18 @@ typedef struct M3Function
 
     pc_t                    compiled;
 
-#   if (d_m3EnableCodePageRefCounting)
+#if (d_m3EnableCodePageRefCounting)
     IM3CodePage *           codePageRefs;                           // array of all pages used
     u32                     numCodePageRefs;
-#   endif
+#endif
 
-#   if defined(DEBUG)
+#if defined(DEBUG)
     u32                     hits;
-#   endif
+#endif
 
+#if d_m3EnableStrace >= 2
+    u16                     index;
+#endif
     u16                     maxStackSlots;
 
     u16                     numArgSlots;
@@ -62,7 +65,6 @@ void        Function_Release            (IM3Function i_function);
 void        Function_FreeCompiledCode   (IM3Function i_function);
 
 cstr_t      GetFunctionImportModuleName (IM3Function i_function);
-cstr_t      GetFunctionName             (IM3Function i_function);
 cstr_t *    GetFunctionNames            (IM3Function i_function, u16 * o_numNames);
 u32         GetFunctionNumArgs          (IM3Function i_function);
 u32         GetFunctionNumReturns       (IM3Function i_function);
@@ -140,6 +142,9 @@ typedef struct M3Module
 {
     struct M3Runtime *      runtime;
     struct M3Environment *  environment;
+
+    bytes_t                 wasmStart;
+    bytes_t                 wasmEnd;
 
     cstr_t                  name;
 
@@ -227,11 +232,17 @@ typedef struct M3Runtime
     M3Memory                memory;
     u32                     memoryLimit;
 
-    M3Result                runtimeError;
+#if d_m3EnableStrace >= 2
+    u32                     callDepth;
+#endif
 
     M3ErrorInfo             error;
 #if d_m3VerboseLogs
     char                    error_message[256]; // the actual buffer. M3ErrorInfo can point to this
+#endif
+
+#if d_m3RecordBacktraces
+    M3BacktraceInfo         backtrace;
 #endif
 }
 M3Runtime;

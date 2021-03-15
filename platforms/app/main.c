@@ -11,11 +11,15 @@
 #include <ctype.h>
 
 #include "wasm3.h"
+#include "m3_api_defs.h"
 #include "m3_api_wasi.h"
 #include "m3_api_libc.h"
 #include "m3_api_tracer.h"
 
-#define FATAL(msg, ...) { printf("Error: [Fatal] " msg "\n", ##__VA_ARGS__); goto _onfatal; }
+// Gas metering/limit only applies to pre-instrumented modules
+#define GAS_LIMIT   2000000000000
+
+#define FATAL(msg, ...) { fprintf(stderr, "Error: [Fatal] " msg "\n", ##__VA_ARGS__); goto _onfatal; }
 
 #if defined(d_m3HasWASI) || defined(d_m3HasMetaWASI) || defined(d_m3HasUVWASI)
 #define LINK_WASI
@@ -23,6 +27,25 @@
 
 IM3Environment env;
 IM3Runtime runtime;
+
+#if defined(GAS_LIMIT)
+
+static int64_t current_gas = GAS_LIMIT;
+static bool is_gas_metered = false;
+
+m3ApiRawFunction(metering_usegas)
+{
+    m3ApiGetArg     (int32_t, gas)
+
+    current_gas -= gas;
+
+    if (UNLIKELY(current_gas < 0)) {
+        m3ApiTrap("[trap] Out of gas");
+    }
+    m3ApiSuccess();
+}
+
+#endif // GAS_LIMIT
 
 
 M3Result link_all  (IM3Module module)
@@ -42,6 +65,15 @@ M3Result link_all  (IM3Module module)
 #if defined(d_m3HasTracer)
     res = m3_LinkTracer (module);
     if (res) return res;
+#endif
+
+#if defined(GAS_LIMIT)
+    res = m3_LinkRawFunction (module, "metering", "usegas", "v(i)", &metering_usegas);
+    if (!res) {
+        fprintf(stderr, "Warning: Gas is limited to %0.4f\n", (double)(current_gas)/10000);
+        is_gas_metered = true;
+    }
+    if (res == m3Err_functionLookupFailed) { res = NULL; }
 #endif
 
     return res;
@@ -136,6 +168,33 @@ M3Result repl_load_hex  (u32 fsize)
     return result;
 }
 
+void print_backtrace()
+{
+    IM3BacktraceInfo info = m3_GetBacktrace(runtime);
+    if (!info) {
+        return;
+    }
+
+    fprintf(stderr, "==== wasm backtrace:");
+
+    int frameCount = 0;
+    IM3BacktraceFrame curr = info->frames;
+    while (curr)
+    {
+        fprintf(stderr, "\n  %d: 0x%06x - %s!%s",
+                           frameCount, curr->moduleOffset,
+                           m3_GetModuleName (m3_GetFunctionModule(curr->function)),
+                           m3_GetFunctionName (curr->function)
+               );
+        curr = curr->next;
+        frameCount++;
+    }
+    if (info->lastFrame == M3_BACKTRACE_TRUNCATED) {
+        fprintf(stderr, "\n  (truncated)");
+    }
+    fprintf(stderr, "\n");
+}
+
 M3Result repl_call  (const char* name, int argc, const char* argv[])
 {
     IM3Function func;
@@ -173,6 +232,13 @@ M3Result repl_call  (const char* name, int argc, const char* argv[])
     }
 
     result = m3_CallArgv (func, argc, argv);
+
+#if defined(GAS_LIMIT)
+    if (is_gas_metered) {
+        fprintf(stderr, "Gas used: %0.4f\n", (double)(GAS_LIMIT - current_gas)/10000);
+    }
+#endif
+
     if (result) return result;
 
     static uint64_t    valbuff[128];
@@ -451,7 +517,8 @@ int  main  (int i_argc, const char* i_argv[])
                 if (argDumpOnTrap) {
                     repl_dump();
                 }
-                FATAL("repl_call: %s", result);
+                print_backtrace();
+                goto _onfatal;
             }
         }
     }
@@ -491,17 +558,18 @@ int  main  (int i_argc, const char* i_argv[])
         } else {
             unescape(argv[0]);
             result = repl_call(argv[0], argc-1, (const char**)(argv+1));
+            if (result) {
+                print_backtrace();
+            }
         }
 
-        if (result) {
+        if (result == m3Err_trapExit) {
+            //TODO: fprintf(stderr, M3_ARCH "-wasi: exit(%d)\n", runtime->exit_code);
+        } else if (result) {
             fprintf (stderr, "Error: %s", result);
             M3ErrorInfo info;
             m3_GetErrorInfo (runtime, &info);
             fprintf (stderr, " (%s)\n", info.message);
-            //TODO: if (result == m3Err_trapExit) {
-                // warn that exit was called
-            //    fprintf(stderr, M3_ARCH "-wasi: exit(%d)\n", runtime->exit_code);
-            //}
         }
     }
 

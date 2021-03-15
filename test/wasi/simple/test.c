@@ -120,6 +120,11 @@ void test_cat(char* fn) {
   }
 }
 
+__attribute__((noinline))   void c() {          __builtin_trap();   }
+__attribute__((noinline))   void b() {          c();   }
+__attribute__((noinline))   void a() {          b();   }
+__attribute__((noinline))   void test_trap() {  a();   }
+
 /*
  * Main
  */
@@ -132,6 +137,10 @@ int main(int argc, char **argv)
   test_args(argc, argv);
   test_gettime();
   test_random();
+  if (0 == strcmp(argv[1], "trap")) {
+    test_trap();
+  }
+
   test_perf_fib(20);
 
   if (0 == strcmp(argv[1], "cat")) {
